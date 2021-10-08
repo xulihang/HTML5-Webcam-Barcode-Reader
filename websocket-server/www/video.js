@@ -13,43 +13,73 @@ var isConnected = false;
 var isPaused = false;
 var intervalId = 0;
 var videoWidth = 640, videoHeight = 480;
+var _error;
+var ws;
 
-// create websocket
-var ws = new WebSocket("wss://"+location.host);
+// add button event
+buttonGo.onclick = function() {
+  window.clearInterval(intervalId);
+  console.log("clean id: " + intervalId);
 
-ws.onopen = function() {
-  isConnected = true;
-  ws.send("Hi");
+  canvas.style.display = 'none';
+
+  isPaused = false;
+  scanBarcode();
+  buttonGo.disabled = true;
 };
 
-ws.onmessage = function (evt) {
-  if (isPaused) {
-    return;
-  }
+init();
 
-  var result = evt.data;
-  barcode_result.textContent = result;
-  // display barcode result
-  if (result.indexOf("No barcode") == -1) {
-    isPaused = true;
-    window.clearInterval(intervalId);
-    console.log("Get result, clean id: " + intervalId);
-    buttonGo.disabled = false;
-    canvas.style.display  = 'block';
-  }
-};
+function ConnectToWebsocket(){
+    ws = new WebSocket("wss://"+location.host);
+    ws.onopen = function() {
+      isConnected = true;
+      alert("Connected");
+      ws.send("Hi");
+    };
 
-ws.onclose = function() {
-  isConnected = false;
-  console.log("Closed");
-};
+    ws.onmessage = function (evt) {
+      if (isPaused) {
+        return;
+      }
 
-ws.onerror = function(err) {
-    console.log("Error: " + err);
-};
+      var result = evt.data;
+      barcode_result.textContent = result;
+      // display barcode result
+      if (result.indexOf("No barcode") == -1) {
+        isPaused = true;
+        window.clearInterval(intervalId);
+        console.log("Get result, clean id: " + intervalId);
+        buttonGo.disabled = false;
+        canvas.style.display  = 'block';
+      }
+    };
+
+    ws.onclose = function() {
+      isConnected = false;
+      alert("Closed");
+    };
+
+    ws.onerror = function(event) {
+      alert("Error");
+    };
+
+}
+
+function onError(err){
+  console.log(err);
+}
+
+async function init(){
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true});
+  await loadCameraSourceList();
+  ConnectToWebsocket();
+}
 
 async function loadCameraSourceList(){
+  console.log("loadlist");
   var videoSelect = document.getElementById("videoSource");
+  videoSelect.innerHTML="";
   var devices = await navigator.mediaDevices.enumerateDevices();
   for (var i=0;i<devices.length;i++){
     var device = devices[i];
@@ -83,26 +113,11 @@ function dataURItoBlob(dataURI) {
     return new Blob([ia], {type:mimeString});
 }
 
-function successCallback(stream) {
-  window.stream = stream;
-  try {
-    videoElement.srcObject = stream;
-  } 
-  catch (error) {
-    videoElement.src = window.URL.createObjectURL(stream);
-  }
-  videoElement.play();
-}
-
-function errorCallback(error) {
-  console.log("Error: " + error);
-}
-
 function startCamera() {
-  navigator.getUserMedia = navigator.getUserMedia ||
-                         navigator.webkitGetUserMedia ||
-                         navigator.mozGetUserMedia;
-  var selectedSource = document.getElementById("videoSource").selectedOptions[0].value;
+  var selectedSource;
+  if (document.getElementById("videoSource").selectedOptions.length>0){
+    selectedSource = document.getElementById("videoSource").selectedOptions[0].value;
+  }
   if (!!selectedSource){
     var constraints = {
       video: {
@@ -119,29 +134,26 @@ function startCamera() {
       }
     };
   }
-  
-  if (navigator.getUserMedia) {
-     navigator.getUserMedia(constraints, successCallback, errorCallback);
+  console.log(selectedSource);
+  if (navigator.mediaDevices.getUserMedia) {
+    navigator.mediaDevices.getUserMedia(constraints).then(function(mediaStream) {
+      try {
+        videoElement.srcObject = mediaStream;
+      } 
+      catch (error) {
+        videoElement.src = window.URL.createObjectURL(mediaStream);
+      }
+      videoElement.play();
+    })
+    .catch(function(error) {
+        console.log(error.name + ": " + error.message);
+    });
   }
   else {
      alert("Unsupported");
      console.log("getUserMedia not supported");
   }
 }
-
-loadCameraSourceList();
-
-// add button event
-buttonGo.onclick = function() {
-  window.clearInterval(intervalId);
-  console.log("clean id: " + intervalId);
-
-  canvas.style.display = 'none';
-
-  isPaused = false;
-  scanBarcode();
-  buttonGo.disabled = true;
-};
 
 // scan barcode
 function scanBarcode() {
